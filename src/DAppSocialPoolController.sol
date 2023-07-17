@@ -34,6 +34,7 @@ contract DAppSocialPoolController is Ownable {
     mapping (address => mapping(uint256 => uint256)) _sourceRecords; // Address => Id => Amount
     mapping (address => mapping(uint256 => uint256)) _targetRecords; // Address => Id => Amount
     mapping (address => mapping(uint256 => bool)) _deliveryMethods;
+    mapping (address => mapping(uint256 => address)) _targetAddresses;
 
     bool private _isCrossXRunning;
 
@@ -47,12 +48,17 @@ contract DAppSocialPoolController is Ownable {
     event TokenSupportRemoved(address indexed, bool);
 
     error InvalidRecord();
+    error TokenNotSupported();
+    error UnAuthorizedUser();
 
     IDAppSocialPoolModel poolModel;
 
-    constructor(address modelAddress) {
+    constructor() {
         _adminList[msg.sender] = true;
-        poolModel = IDAppSocialPoolModel(modelAddress);
+    }
+
+    function name() public pure returns (string memory) {
+        return "DAppSocialPoolController";
     }
 
     modifier adminOnly() {
@@ -101,7 +107,7 @@ contract DAppSocialPoolController is Ownable {
     }
 
     function requestTokens(uint256 id, address tokenAddress, uint256 amount, uint256 feeAmount) external crossXRunning {
-        require(_supportedTokens[tokenAddress], "Token is not supported");
+        if (!_supportedTokens[tokenAddress]) revert TokenNotSupported();
         require(amount > 0, "Amount should be greater than 0");
         _sourceRecords[msg.sender][id] = amount;
         poolModel.holdTokensWithFee(tokenAddress, msg.sender, amount, feeAmount);
@@ -109,24 +115,34 @@ contract DAppSocialPoolController is Ownable {
     }
 
     // Create a record for accept on Target
-    function createTgtRecord(uint256 id, address tokenAddress, address toAddress, uint256 amount, bool isWalletTransfer) external adminOnly {
-        require(_supportedTokens[tokenAddress], "Token is not supported");
+    function createTgtRecord(uint256 id, address tokenAddress, address fromAddress, address toAddress, uint256 amount, bool isWalletTransfer) external adminOnly {
+        if (!_supportedTokens[tokenAddress]) revert TokenNotSupported();
         _targetRecords[toAddress][id] = amount;
         if (isWalletTransfer) {
             _deliveryMethods[toAddress][id] = isWalletTransfer;
+        }
+        if (fromAddress != address(0)) {
+            _targetAddresses[toAddress][id] = fromAddress;
         }
         emit TokenSwapRequested(tokenAddress, toAddress, amount);
     }
 
     function acceptRequest(uint256 id, address tokenAddress, address toAddress) external crossXRunning validRecord(_targetRecords[toAddress][id]) {
+        address fromAddress = _targetAddresses[toAddress][id];
+        if ( fromAddress != address(0) && fromAddress != msg.sender) {
+            revert UnAuthorizedUser();
+        }
         uint256 amount = _targetRecords[toAddress][id];
         poolModel.transferTokens(tokenAddress, msg.sender, toAddress, amount, _deliveryMethods[toAddress][id]);
         _targetRecords[toAddress][id] = 0;
         emit TokenSwapAccepted(tokenAddress, msg.sender, toAddress, amount);
     }
 
-    function updateSrcAmount(uint256 id, address tokenAddress, address fromAddress, address toAddress, uint256 amount) external adminOnly validRecord(_sourceRecords[fromAddress][id]) {
+    function updateSrcAmount(uint256 id, address tokenAddress, address fromAddress, address toAddress, uint256 amount, uint256 releaseAmount) external adminOnly validRecord(_sourceRecords[fromAddress][id]) {
         poolModel.transferPendingTokens(tokenAddress, fromAddress, toAddress, amount);
+        if (releaseAmount > 0) {
+            poolModel.releaseTokens(tokenAddress, fromAddress, releaseAmount);
+        }
         _sourceRecords[fromAddress][id] = 0;
         emit TokenSwapCompleted(tokenAddress, fromAddress, toAddress, amount);
     }
