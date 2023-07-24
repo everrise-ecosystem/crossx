@@ -5,25 +5,20 @@ import "./IERC20.sol";
 import "./Ownable.sol";
 
 interface IDAppSocialPoolModel {
-    function depositNative() external payable;
-    function depositTokens(address tokenAddress, uint256 amount) external;
-    function withdrawNative(uint256 amount) external;
-    function withdrawTokens(address tokenAddress, uint256 amount) external;
-    function withdrawNativeWithAlt(address from, uint256 amount) external;
-    function withdrawTokensWithAlt(address tokenAddress, address from, uint256 amount) external;
-    function transferNative(address from, address to, uint256 amount) external;
+
     function transferTokens(address tokenAddress, address from, address to, uint256 amount, bool isWalletTransfer) external;
     function transferPendingTokens(address tokenAddress, address from, address to, uint256 amount) external;
-    function transferETH(address from, address to, uint256 amount, uint256 feeAmount) external;
-    function transferPendingETH(address from, address to, uint256 amount, uint256 feeAmount) external;
-    function holdNative(address fromAddress, uint256 amount) external;
-    function holdNativeWithFee(address from, uint256 amount, uint256 feeAmount) external;
-    function releaseNative(address fromAddress, uint256 amount) external;
-    function holdTokens(address tokenAddress, address fromAddress, uint256 amount) external;
     function holdTokensWithFee(address tokenAddress, address from, uint256 amount, uint256 feeAmount) external;
     function releaseTokens(address tokenAddress, address fromAddress, uint256 amount) external;
-    function getTokenBalances(address tokenAddress, address account) external;
-    function getNativeBalances(address account) external;
+}
+
+interface IDAppSocialNativePoolModel {
+
+    function transferNative(address from, address to, uint256 amount, bool isWalletTransfer) external;
+    function transferPendingNative(address from, address to, uint256 amount) external;
+    function holdNativeWithFee(address from, uint256 amount, uint256 feeAmount) external;
+    function releaseNative(address fromAddress, uint256 amount) external;
+
 }
 
 contract DAppSocialPoolController is Ownable {
@@ -52,6 +47,7 @@ contract DAppSocialPoolController is Ownable {
     error UnAuthorizedUser();
 
     IDAppSocialPoolModel poolModel;
+    IDAppSocialNativePoolModel nativePoolModel;
 
     constructor() {
         _adminList[msg.sender] = true;
@@ -84,6 +80,10 @@ contract DAppSocialPoolController is Ownable {
         poolModel = IDAppSocialPoolModel(newModel);
     }
 
+    function setNativePoolModel(address newModel) external onlyOwner {
+        nativePoolModel = IDAppSocialNativePoolModel(newModel);
+    }
+
     function addSupportedToken(address tokenAddress) external onlyOwner {
         _supportedTokens[tokenAddress] = true;
         emit TokenSupportAdded(tokenAddress, true);
@@ -110,7 +110,11 @@ contract DAppSocialPoolController is Ownable {
         if (!_supportedTokens[tokenAddress]) revert TokenNotSupported();
         require(amount > 0, "Amount should be greater than 0");
         _sourceRecords[msg.sender][id] = amount;
-        poolModel.holdTokensWithFee(tokenAddress, msg.sender, amount, feeAmount);
+        if (tokenAddress == address(0)) {
+            nativePoolModel.holdNativeWithFee(msg.sender, amount, feeAmount);
+        } else {
+            poolModel.holdTokensWithFee(tokenAddress, msg.sender, amount, feeAmount);
+        }
         emit TokenSwapRequested(tokenAddress, msg.sender, amount);
     }
 
@@ -133,22 +137,39 @@ contract DAppSocialPoolController is Ownable {
             revert UnAuthorizedUser();
         }
         uint256 amount = _targetRecords[toAddress][id];
-        poolModel.transferTokens(tokenAddress, msg.sender, toAddress, amount, _deliveryMethods[toAddress][id]);
         _targetRecords[toAddress][id] = 0;
+        if (tokenAddress == address(0)) {
+            nativePoolModel.transferNative(msg.sender, toAddress, amount, _deliveryMethods[toAddress][id]);
+        } else {
+            poolModel.transferTokens(tokenAddress, msg.sender, toAddress, amount, _deliveryMethods[toAddress][id]);
+        }
+        
         emit TokenSwapAccepted(tokenAddress, msg.sender, toAddress, amount);
     }
 
     function updateSrcAmount(uint256 id, address tokenAddress, address fromAddress, address toAddress, uint256 amount, uint256 releaseAmount) external adminOnly validRecord(_sourceRecords[fromAddress][id]) {
-        poolModel.transferPendingTokens(tokenAddress, fromAddress, toAddress, amount);
+        if (tokenAddress == address(0)) {
+            nativePoolModel.transferPendingNative(fromAddress, toAddress, amount);
+        } else {
+            poolModel.transferPendingTokens(tokenAddress, fromAddress, toAddress, amount);
+        }
         if (releaseAmount > 0) {
-            poolModel.releaseTokens(tokenAddress, fromAddress, releaseAmount);
+            if (tokenAddress == address(0)) {
+                nativePoolModel.releaseNative(fromAddress, amount);
+            } else {
+                poolModel.releaseTokens(tokenAddress, fromAddress, releaseAmount);
+            }
         }
         _sourceRecords[fromAddress][id] = 0;
         emit TokenSwapCompleted(tokenAddress, fromAddress, toAddress, amount);
     }
 
     function cancelSrcRequest(uint256 id, address tokenAddress, address fromAddress, uint256 amount) external adminOnly validRecord(_sourceRecords[fromAddress][id]) {
-        poolModel.releaseTokens(tokenAddress, fromAddress, amount);
+        if (tokenAddress == address(0)) {
+            nativePoolModel.releaseNative(fromAddress, amount);
+        } else {
+            poolModel.releaseTokens(tokenAddress, fromAddress, amount);
+        }
         _sourceRecords[fromAddress][id] = 0;
         emit TokenSwapCancelled(tokenAddress, fromAddress, amount);
     }
