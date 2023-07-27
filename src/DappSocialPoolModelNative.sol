@@ -230,6 +230,7 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
      * @param newAddress Address which collects the fee
      */
     function setFeeAddress(address newAddress) external onlyOwner {
+        if (newAddress == address(0)) revert NotZeroAddress();
         emit UpdatedFeeAddress(feeAddress, newAddress);
         feeAddress = newAddress;
     }
@@ -240,6 +241,7 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
      * @param newAddress New Exchange address 
      */
     function updateExchange(address newAddress) external onlyOwner {
+        if (newAddress == address(0)) revert NotZeroAddress();
         emit UpdatedExchangeAddress(exchangeAddress, newAddress);
         exchangeAddress = newAddress;
     }
@@ -336,6 +338,7 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
     }
 
     function _transfer(address from, address to, uint256 amount) internal {
+        if (to == address(0)) revert NotZeroAddress();
         (bool success, ) = payable(to).call{value: amount}("");
         if (success) {
             emit NativeTransferred(from, to, amount);
