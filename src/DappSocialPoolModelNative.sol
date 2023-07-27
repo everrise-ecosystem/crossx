@@ -264,9 +264,11 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
      */
     function depositTokens(address tokenAddress, uint256 amount) external validAmount(amount) {
         if (!_supportedTokens[tokenAddress]) revert TokenNotSupported();
+        uint256 initial = IERC20(tokenAddress).balanceOf(address(this));
         IERC20(tokenAddress).safeTransferFrom(msg.sender, address(this), amount);
-        _tokenBalances[tokenAddress][msg.sender] += amount;
-        emit TokenDeposited(tokenAddress, msg.sender, amount);
+        uint256 finalAmount = IERC20(tokenAddress).balanceOf(address(this)) - initial;
+        _tokenBalances[tokenAddress][msg.sender] += finalAmount;
+        emit TokenDeposited(tokenAddress, msg.sender, finalAmount);
     }
 
     /**
