@@ -122,7 +122,7 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
     /**
      * @dev It locks the sender account's assets from withdrawl until the time specified
      *
-     * @param altAccount Alternate account whcih can unlock anytime before the lock expires
+     * @param altAccount Alternate account which can unlock anytime before the lock expires
      * @param length Time in seconds to lock the assets
      */
     function lockTokens(address altAccount, uint48 length) external tokensLock(_msgSender()) {
