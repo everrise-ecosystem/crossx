@@ -423,7 +423,7 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
      * @param to To address
      * @param amount Amount to send
      */
-    function transferETH(address from, address to, uint256 amount, uint256 feeAmount) external exchangeOnly validAmount(amount) enoughBalance(amount, _nativeBalances[from]) {
+    function transferETH(address from, address to, uint256 amount, uint256 feeAmount) external exchangeOnly validAmount(amount) enoughBalance(amount + feeAmount, _nativeBalances[from]) {
         unchecked {
             _nativeBalances[from] -= (amount + feeAmount);
         }
@@ -438,7 +438,7 @@ contract DAppSocialPoolModel is Ownable, ReentrancyGuard {
      * @param to To address
      * @param amount Pending amount to send
      */
-    function transferPendingETH(address from, address to, uint256 amount, uint256 feeAmount) external exchangeOnly validAmount(amount) enoughBalance(amount, _pendingNativeBalances[from]) {
+    function transferPendingETH(address from, address to, uint256 amount, uint256 feeAmount) external exchangeOnly validAmount(amount) enoughBalance(amount + feeAmount, _pendingNativeBalances[from]) {
         unchecked {
             _pendingNativeBalances[from] -= (amount + feeAmount);
         }
